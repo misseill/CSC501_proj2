@@ -1,3 +1,4 @@
+// Project 1: Swastik Mittal, Smittal6; Erika Eill, Eleill
 //////////////////////////////////////////////////////////////////////
 //                      North Carolina State University
 //
@@ -55,9 +56,8 @@ struct task_info {
 
 struct object {
     long long int oid;
-    bool lock;
     struct object *next;
-    void* objspace;
+    unsigned long long objspace;
 };
 
 struct container_info {
@@ -77,32 +77,46 @@ DEFINE_MUTEX(lockproc);
 /// calculate container id ///
 
 long long int retcid(pid_t pid){
+
+    printk(KERN_INFO "Finding container Id for pid %d",pid);
     
     long long int counter = 999999999;
     long long int i = 0;
 
     for(i = 0 ; i < 1000 ; i++){
-        struct task_info *temptask = containers[i]->head;
 
-        if(temptask->tid == pid){
-            return i;
-        }
+        if(containers[i] != NULL) {
 
-        else {
+            if(containers[i]->head != NULL) {
 
-            temptask = temptask->next;
+                struct task_info *temptask = containers[i]->head;
 
-            while(temptask->next != containers[i]->head){
                 if(temptask->tid == pid){
+                    printk(KERN_INFO "container id found %lld, in if ",i);
+
                     return i;
                 }
 
                 else {
+
                     temptask = temptask->next;
+
+                    while(temptask->next != containers[i]->head->next){
+                        if(temptask->tid == pid){
+                            printk(KERN_INFO "container id found %lld, in while",i);
+                            return i;
+                        }
+
+                        else {
+                            temptask = temptask->next;
+                        }
+                    }
                 }
             }
         }
     }
+
+    printk(KERN_INFO "container id not found %lld ",counter);
 
     return counter;
 }
@@ -121,6 +135,8 @@ int memory_container_mmap(struct file *filp, struct vm_area_struct *vma)
     
     */
 
+    long long int oid = vma->vm_pgoff;
+
 
     long long int counter = retcid(current->pid);
 
@@ -133,13 +149,64 @@ int memory_container_mmap(struct file *filp, struct vm_area_struct *vma)
 
         struct object *tempref = containers[counter]->objref;
 
-        while(!tempref->lock){      // if the object is locked then that object is referenced
-            tempref = tempref->next;
+        bool flag = false;
+
+        if(tempref == NULL) {
+
+            struct object *obj = kmalloc(sizeof(struct object), GFP_KERNEL);
+
+            obj->oid = oid;
+           // obj->lock = true;
+            obj->next = NULL;
+            obj->objspace = kmalloc(PAGE_SIZE, GFP_KERNEL);
+
+            printk(KERN_INFO "creating 1st object for container with container id %lld and object id %lld ",counter,oid);
+
+            containers[counter]->objref = obj;
+            tempref = containers[counter]->objref;
+        }
+
+        else if(tempref->oid != oid) { // checking if in case there exist only one object
+
+            while(tempref->next != NULL){
+                if(tempref->next->oid == oid){
+                    tempref = tempref->next;    
+                    flag = true;
+                    //tempref->lock = true;
+                    printk(KERN_INFO "object for container with container id %lld and object id %lld already exist",counter,oid);
+                    break;
+                }
+
+                tempref = tempref->next;
+            }
+
+            if(!flag){
+                printk(KERN_INFO "creating object for container with container id %lld and object id %lld ",counter,oid);
+                
+                struct object *obj = kmalloc(sizeof(struct object), GFP_KERNEL);
+
+                obj->oid = oid;
+                obj->next = NULL;
+                obj->objspace = kmalloc(PAGE_SIZE, GFP_KERNEL);
+
+                tempref->next = obj;
+                tempref = tempref->next;
+            }
+        }
+
+        else {
+
+            // 1st object is being referred
+            printk(KERN_INFO "Object already here and is the 1st object");
         }
 
         //static char* kmallocarea = PAGE_ALIGN(&tempref);
 
-        char* kmallocarea = (int *)(((unsigned long)(tempref->objspace) + PAGE_SIZE -1) & PAGE_MASK);
+        //char* kmallocarea = (int *)(((unsigned long)(tempref->objspace) + PAGE_SIZE -1) & PAGE_MASK);
+
+        unsigned long long *kmallocarea;
+
+        kmallocarea = PAGE_ALIGN(tempref->objspace);
 
         unsigned long pfn = virt_to_phys((void *)kmallocarea)>>PAGE_SHIFT;
 
@@ -163,78 +230,9 @@ int memory_container_mmap(struct file *filp, struct vm_area_struct *vma)
 
 int memory_container_lock(struct memory_container_cmd __user *user_cmd)
 {
+    printk(KERN_INFO "locking the data structure");
+
     mutex_lock(&lockproc);
-
-    struct memory_container_cmd *temp;    
-
-    temp = kmalloc(sizeof(struct memory_container_cmd), GFP_KERNEL);
-
-    copy_from_user(temp,user_cmd, sizeof(struct memory_container_cmd));
-
-    //long long int x = temp->cid;
-
-    long long int counter = retcid(current->pid);      // in case switch gets called with all threads dead then counter won't be udpdated
-
-    if (counter == 999999999) {
-        printk(KERN_INFO "No Container Matched");
-    }
-
-    else {
-
-        printk(KERN_INFO "locking object of container with container id %lld and object %lld ",counter,temp->oid);
-
-        struct object *tempref = containers[counter]->objref;
-
-        bool flag = false;
-
-        if(tempref == NULL) {
-
-            struct object *obj = kmalloc(sizeof(struct object), GFP_KERNEL);
-
-            obj->oid = temp->oid;
-            obj->lock = true;
-            obj->next = NULL;
-            obj->objspace = kmalloc(PAGE_SIZE, GFP_KERNEL);
-
-            printk(KERN_INFO "creating 1st object for container with container id %lld and object id %lld ",counter,temp->oid);
-
-            containers[counter]->objref = obj;
-        }
-
-        else if(tempref->oid != temp->oid) { // checking if in case there exist only one object
-
-            while(tempref->next != NULL){
-                if(tempref->oid == temp->oid){
-                    flag = true;
-                    tempref->lock = true;
-                    printk(KERN_INFO "object for container with container id %lld and object id %lld already exist",counter,temp->oid);
-                    break;
-                }
-
-                tempref = tempref->next;
-            }
-
-            if(!flag){
-                printk(KERN_INFO "creating object for container with container id %lld and object id %lld ",counter,temp->oid);
-                
-                struct object *obj = kmalloc(sizeof(struct object), GFP_KERNEL);
-
-                obj->oid = temp->oid;
-                obj->lock = true;
-                obj->next = NULL;
-                obj->objspace = kmalloc(PAGE_SIZE, GFP_KERNEL);
-
-                tempref->next = obj;
-            }
-        }
-
-        else {
-
-            // 1st object is being referred
-
-            tempref->lock = true;
-        }
-    }
 
     return 0;
 }
@@ -243,39 +241,9 @@ int memory_container_lock(struct memory_container_cmd __user *user_cmd)
 
 int memory_container_unlock(struct memory_container_cmd __user *user_cmd)
 {
-    struct memory_container_cmd *temp;    
 
-    temp = kmalloc(sizeof(struct memory_container_cmd), GFP_KERNEL);
-
-    copy_from_user(temp,user_cmd, sizeof(struct memory_container_cmd));
-
-    long long int counter = retcid(current->pid);      // in case switch gets called with all threads dead then counter won't be udpdated
-
-    if (counter == 999999999) {
-        printk(KERN_INFO "No Container Matched");
-    }
-
-    else {
-
-        //long long int x = temp->cid;
-
-        printk(KERN_INFO "unlocking object of container with container id %lld and object %lld ",counter,temp->oid);
-
-        struct object *tempref = containers[counter]->objref;
-
-
-        if(tempref == NULL) {
-            return 0;
-        }
-
-        while(tempref->oid != temp->oid && tempref->next != NULL){
-            tempref = tempref->next;
-        }
-
-        tempref->lock = false;
-
-    }
-
+    printk(KERN_INFO "unlocking the data structure");
+    
     mutex_unlock(&lockproc);
 
     /*As allowing multiple access that is two task within a container can access different objects simultaneously hence need to make sure that after freeing an objec unlock would not be required because that object is free*/
@@ -294,7 +262,10 @@ int memory_container_delete(struct memory_container_cmd __user *user_cmd)
 
     copy_from_user(temp,user_cmd, sizeof(struct memory_container_cmd));
 
+    printk(KERN_INFO "Function called to find container id");
+
     long long int counter = retcid(current->pid);      // in case switch gets called with all threads dead then counter won't be udpdated
+
 
     if (counter == 999999999) {
         printk(KERN_INFO "No Container Matched");
@@ -439,6 +410,8 @@ int memory_container_free(struct memory_container_cmd __user *user_cmd)
 
     //long long int x = temp->cid;
 
+    printk(KERN_INFO "Function called to find container id");
+
     long long int counter = retcid(current->pid);      // in case switch gets called with all threads dead then counter won't be udpdated
 
     if (counter == 999999999) {
@@ -452,19 +425,23 @@ int memory_container_free(struct memory_container_cmd __user *user_cmd)
 
         // in case 1st object is deleted
 
+        if(tempref == NULL){
+            printk(KERN_INFO "No object left to free");
+        }
+
         if(tempref->oid == temp->oid){
 
             if(tempref->next == NULL){
                 printk(KERN_INFO "This is the 1st and the last object of the container");
                 containers[counter]->objref = NULL;
-                kfree(tempref->objspace);
+                //kfree(tempref->objspace);
                 kfree(tempref);
             }
 
             else {
                 printk(KERN_INFO "This is the 1st object of the container");
                 containers[counter]->objref = tempref->next;
-                kfree(tempref->objspace);
+               // kfree(tempref->objspace);
                 kfree(tempref);
             }
         }
@@ -473,16 +450,26 @@ int memory_container_free(struct memory_container_cmd __user *user_cmd)
          
             printk(KERN_INFO "This is a middle object of the container");
 
-            struct object *prev;
+            struct object *previous;
 
-            while(tempref->oid != temp->oid) {
-                prev = tempref;
+            while(tempref->oid != temp->oid && tempref->next != NULL) {
+                previous = tempref;
                 tempref = tempref->next;
             }
 
-            prev->next = tempref->next;
-            kfree(tempref->objspace);
-            kfree(tempref);
+            printk(KERN_INFO "checking for error after freeing middle");
+
+            if(tempref->oid == temp->oid) {
+                previous->next = tempref->next;
+                // kfree(tempref->objspace);
+                kfree(tempref);
+
+                printk(KERN_INFO "Freed the middle object");
+            }
+
+            else {
+                printk(KERN_INFO "No such object found");
+            }
         }
     }
 
