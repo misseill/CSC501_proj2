@@ -136,7 +136,7 @@ int memory_container_mmap(struct file *filp, struct vm_area_struct *vma)
     */
 
     long long int oid = vma->vm_pgoff;
-
+   	long long int osize = vma->vm_end - vma->vm_start;
 
     long long int counter = retcid(current->pid);
 
@@ -158,7 +158,7 @@ int memory_container_mmap(struct file *filp, struct vm_area_struct *vma)
             obj->oid = oid;
            // obj->lock = true;
             obj->next = NULL;
-            obj->objspace = kmalloc(PAGE_SIZE, GFP_KERNEL);
+            obj->objspace = kmalloc(osize, GFP_KERNEL);
 
             printk(KERN_INFO "creating 1st object for container with container id %lld and object id %lld ",counter,oid);
 
@@ -187,7 +187,7 @@ int memory_container_mmap(struct file *filp, struct vm_area_struct *vma)
 
                 obj->oid = oid;
                 obj->next = NULL;
-                obj->objspace = kmalloc(PAGE_SIZE, GFP_KERNEL);
+                obj->objspace = kmalloc(osize, GFP_KERNEL);
 
                 tempref->next = obj;
                 tempref = tempref->next;
