@@ -1,4 +1,4 @@
-// Project 1: Swastik Mittal, Smittal6; Erika Eill, Eleill
+// Project 2: Swastik Mittal, Smittal6; Erika Eill, Eleill
 //////////////////////////////////////////////////////////////////////
 //                      North Carolina State University
 //
