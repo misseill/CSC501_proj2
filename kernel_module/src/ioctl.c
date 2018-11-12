@@ -153,12 +153,12 @@ int memory_container_mmap(struct file *filp, struct vm_area_struct *vma)
 
         if(tempref == NULL) {
 
-            struct object *obj = kmalloc(sizeof(struct object), GFP_KERNEL);
+            struct object *obj = kcalloc(1, sizeof(struct object), GFP_KERNEL);
 
             obj->oid = oid;
            // obj->lock = true;
             obj->next = NULL;
-            obj->objspace = kmalloc(osize, GFP_KERNEL);
+            obj->objspace = kcalloc(1, osize, GFP_KERNEL);
 
             printk(KERN_INFO "creating 1st object for container with container id %lld and object id %lld ",counter,oid);
 
@@ -183,11 +183,11 @@ int memory_container_mmap(struct file *filp, struct vm_area_struct *vma)
             if(!flag){
                 printk(KERN_INFO "creating object for container with container id %lld and object id %lld ",counter,oid);
                 
-                struct object *obj = kmalloc(sizeof(struct object), GFP_KERNEL);
+                struct object *obj = kcalloc(1, sizeof(struct object), GFP_KERNEL);
 
                 obj->oid = oid;
                 obj->next = NULL;
-                obj->objspace = kmalloc(osize, GFP_KERNEL);
+                obj->objspace = kcalloc(1, osize, GFP_KERNEL);
 
                 tempref->next = obj;
                 tempref = tempref->next;
